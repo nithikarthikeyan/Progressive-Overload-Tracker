@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Overload</title>
+<meta name="theme-color" content="#14161A" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Overload" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%2314161A'/%3E%3Cg stroke='%23F2A93B' stroke-width='11' stroke-linecap='round' fill='none'%3E%3Cpath d='M55 60v60M40 72v36M125 60v60M140 72v36M55 90h70'/%3E%3C/g%3E%3C/svg%3E" />
+<link rel="manifest" href="data:application/json,%7B%22name%22%3A%22Overload%22%2C%22short_name%22%3A%22Overload%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%2314161A%22%2C%22theme_color%22%3A%22%2314161A%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%253D%2527http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2527%2520viewBox%253D%25270%25200%2520180%2520180%2527%253E%253Crect%2520width%253D%2527180%2527%2520height%253D%2527180%2527%2520rx%253D%252740%2527%2520fill%253D%2527%252314161A%2527%252F%253E%253Cg%2520stroke%253D%2527%2523F2A93B%2527%2520stroke-width%253D%252711%2527%2520stroke-linecap%253D%2527round%2527%2520fill%253D%2527none%2527%253E%253Cpath%2520d%253D%2527M55%252060v60M40%252072v36M125%252060v60M140%252072v36M55%252090h70%2527%252F%253E%253C%252Fg%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22any%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D" />
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: #14161A; }
+  input { font-size: 16px; } /* prevents iOS zoom on focus */
+  button { font-family: inherit; }
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+const uid = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : "id" + Date.now() + Math.random());
+
+const C = {
+  bg: "#14161A", panel: "#1C1F24", panel2: "#23272E", line: "#31363F",
+  text: "#ECECEA", sub: "#8A929E", faint: "#5C636E",
+  weight: "#F2A93B", reps: "#5BA3C7", set: "#9B8CFF", back: "#E5604D", hold: "#8A929E",
+};
+
+/* ---------- program: Upper / Lower ---------- */
+const DEFAULTS = [
+  { id: "ua1", day: "Upper A", name: "Barbell Bench Press", lo: 5, hi: 8, big: false },
+  { id: "ua2", day: "Upper A", name: "Military Press (standing BB)", lo: 5, hi: 8, big: false },
+  { id: "ua3", day: "Upper A", name: "Pull-up / Lat Pulldown", lo: 6, hi: 9, big: false },
+  { id: "ua4", day: "Upper A", name: "Chest-Supported Row", lo: 6, hi: 9, big: false },
+  { id: "ua5", day: "Upper A", name: "Cable Lateral Raise", lo: 12, hi: 15, big: false },
+  { id: "ua6", day: "Upper A", name: "Triceps Pushdown", lo: 8, hi: 12, big: false },
+  { id: "ua7", day: "Upper A", name: "Smith Machine Skullcrusher", lo: 8, hi: 10, big: false },
+  { id: "ua8", day: "Upper A", name: "Barbell / DB Curl", lo: 8, hi: 12, big: false },
+  { id: "la1", day: "Lower A", name: "Hack Squat or Belt Squat", lo: 6, hi: 9, big: false },
+  { id: "la2", day: "Lower A", name: "Weighted Step-up", lo: 8, hi: 10, big: false },
+  { id: "la3", day: "Lower A", name: "Lying Leg Curl", lo: 8, hi: 12, big: false },
+  { id: "la4", day: "Lower A", name: "Leg Extension", lo: 10, hi: 15, big: false },
+  { id: "la5", day: "Lower A", name: "Farmer's Carry", lo: 30, hi: 40, big: true, carry: true },
+  { id: "la6", day: "Lower A", name: "Standing Calf Raise", lo: 8, hi: 12, big: false },
+  { id: "ub1", day: "Upper B", name: "Incline DB Press", lo: 6, hi: 9, big: false },
+  { id: "ub2", day: "Upper B", name: "Pec Deck / Cable Fly", lo: 10, hi: 15, big: false },
+  { id: "ub3", day: "Upper B", name: "Seated DB Shoulder Press", lo: 6, hi: 9, big: false },
+  { id: "ub4", day: "Upper B", name: "Wide-Grip Lat Pulldown", lo: 8, hi: 12, big: false },
+  { id: "ub5", day: "Upper B", name: "DB Lateral Raise", lo: 12, hi: 15, big: false },
+  { id: "ub6", day: "Upper B", name: "Overhead Triceps Extension", lo: 10, hi: 12, big: false },
+  { id: "ub7", day: "Upper B", name: "Single-Arm Tricep Extension", lo: 10, hi: 12, big: false },
+  { id: "ub8", day: "Upper B", name: "Incline DB Curl", lo: 8, hi: 12, big: false },
+  { id: "lb1", day: "Lower B", name: "Romanian Deadlift", lo: 6, hi: 9, big: true },
+  { id: "lb2", day: "Lower B", name: "Bulgarian Split Squat", lo: 8, hi: 12, big: false },
+  { id: "lb3", day: "Lower B", name: "Seated Leg Curl", lo: 8, hi: 12, big: false },
+  { id: "lb4", day: "Lower B", name: "Hip Thrust", lo: 8, hi: 12, big: true },
+  { id: "lb5", day: "Lower B", name: "Seated Calf Raise", lo: 10, hi: 15, big: false },
+];
+const DAYS = ["Upper A", "Lower A", "Upper B", "Lower B"];
+const FEELS = [
+  { k: "easy", label: "Easy", hint: "3+ reps left in the tank" },
+  { k: "solid", label: "Solid", hint: "hard but clean, 1-2 left" },
+  { k: "hard", label: "Hard", hint: "all-out, hit the target" },
+  { k: "grind", label: "Grind", hint: "ground to a halt / missed it" },
+];
+
+const epley = (w, r) => w * (1 + r / 30);
+const round = (x, step) => Math.max(step, Math.round(x / step) * step);
+function increment(ex, feel, inc) {
+  let base = ex.big ? inc * 2 : inc;
+  if (feel === "easy") base *= 2;
+  if (feel === "grind") base = inc;
+  return round(base, inc);
+}
+function isStalled(rows) {
+  if (rows.length < 3) return false;
+  const l = rows.slice(-3);
+  const sameW = l.every((x) => x.weight === l[0].weight);
+  const best = l.map((x) => Math.max(...x.reps));
+  return sameW && best[2] <= best[0];
+}
+
+function recommend(ex, rows, inc, unit) {
+  if (!rows.length) return { v: "START", c: C.sub, head: "Log your first set", sub: null, detail: "Once you log a session, your exact next-session target shows up here." };
+  const last = rows[rows.length - 1];
+  const w = last.weight, feel = last.feel;
+  if (ex.carry) {
+    const dist = last.dist || ex.lo;
+    if (last.beat) return { v: "RECOVER", c: C.hold, icon: "\u21BB", head: `Repeat ${w}${unit}`, sub: `for ${dist}m \u00B7 low recovery`, detail: `You flagged low recovery -- repeat the same carry and add load next time you're fresh.` };
+    if (feel === "grind") return { v: "HOLD LOAD", c: C.back, icon: "\u26A0", head: `Hold ${w}${unit}`, sub: `for ${dist}m`, detail: `Grip or posture broke down. Own ${w}${unit} for ${dist}m clean before adding anything.` };
+    if (feel === "easy") return { v: "GO HEAVIER", c: C.weight, icon: "\u2191", head: `${w + inc * 2}${unit}`, sub: `or +10m \u00B7 too light`, detail: `That barely registered -- jump to ${w + inc * 2}${unit}, or keep the load and walk 10m farther.` };
+    if (feel === "hard") return { v: "ADD DISTANCE", c: C.reps, icon: "\u2192", head: `${dist + 5}m`, sub: `hold ${w}${unit} \u00B7 earn it`, detail: `Load felt heavy -- keep ${w}${unit} and push to ${dist + 5}m. Add load once distance feels easy.` };
+    return { v: "GO HEAVIER", c: C.weight, icon: "\u2191", head: `${w + inc}${unit}`, sub: `or extend to ${dist + 10}m`, detail: `Solid carry. Add ${inc}${unit} next session, or keep the load and extend to ${dist + 10}m.` };
+  }
+  const reps = last.reps;
+  const topHit = reps.every((r) => r >= ex.hi);
+  const bottomMiss = reps.some((r) => r < ex.lo);
+  const maxR = Math.max(...reps);
+  if (last.beat) return { v: "RECOVER", c: C.hold, icon: "\u21BB", head: `Repeat ${w}${unit}`, sub: `\u00D7 ${maxR} \u00B7 low recovery`, detail: `You flagged low recovery. Match ${w} for ${ex.lo}-${ex.hi} and push the weight next time you're fresh.` };
+  if (feel === "grind" && bottomMiss) {
+    const under = ex.lo - Math.min(...reps);
+    if (under >= 2) { const nw = round(w * 0.9, inc); return { v: "BACK OFF", c: C.back, icon: "\u26A0", head: `${nw}${unit}`, sub: `\u00D7 ${ex.lo} \u00B7 backed off`, detail: `You fell ${under}+ reps short of ${ex.lo}. Reset to ${nw} and rebuild clean reps before loading again.` }; }
+    return { v: "HOLD WEIGHT", c: C.back, icon: "\u26A0", head: `${w}${unit}`, sub: `\u00D7 ${ex.lo} \u00B7 hold`, detail: `You missed the bottom of the range. Repeat ${w} until you hit ${ex.lo}+ on every set.` };
+  }
+  if (topHit) { const add = increment(ex, feel, inc); return { v: "GO UP IN WEIGHT", c: C.weight, icon: "\u2191", head: `${w + add}${unit}`, sub: `\u00D7 ${ex.lo} \u00B7 +${add}`, detail: `You capped ${ex.hi} reps on every set. Add ${add}, drop to ${ex.lo}, and climb the range again.` }; }
+  if (feel === "easy") { const add = increment(ex, "easy", inc); return { v: "GO UP IN WEIGHT", c: C.weight, icon: "\u2191", head: `${w + add}${unit}`, sub: `+${add} \u00B7 too light`, detail: `That was too light -- you left 3+ in the tank. Jump to ${w + add} and keep working the ${ex.lo}-${ex.hi} range.` }; }
+  if (isStalled(rows)) {
+    const sets = last.reps.length;
+    if (sets < 4) return { v: "ADD A SET", c: C.set, icon: "\u2261", head: `${sets + 1} sets`, sub: `@ ${w}${unit}`, detail: `Reps & weight flat for 3 sessions. If sleep and soreness are good, add a set at ${w}. If you're run down, hold instead.` };
+    return { v: "HOLD", c: C.hold, icon: "\u21BB", head: `Hold ${w}${unit}`, sub: `deload ~10% soon`, detail: `You're at 4 sets and stalled -- take a lighter week (deload ~10%) then rebuild, rather than adding volume.` };
+  }
+  const target = Math.min(maxR + 1, ex.hi);
+  return { v: "GO UP IN REPS", c: C.reps, icon: "\u21BB", head: `${w}${unit} \u00D7 ${target}`, sub: `same load \u00B7 +1 rep/set`, detail: `Keep ${w}. Add one rep per set -- target ${target} on every set. When all sets hit ${ex.hi}, the weight goes up.` };
+}
+
+/* ---------- storage (localStorage) ---------- */
+const KEY = "po:data:v2";
+function load() { try { const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; } catch { return null; } }
+function persist(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch {} }
+
+/* ---------- atoms ---------- */
+const Panel = ({ children, style }) => <div style={{ background: C.panel, border: "1px solid " + C.line, borderRadius: 14, ...style }}>{children}</div>;
+function G({ ch, size = 16, color = C.text, style }) { return <span style={{ fontSize: size, color, lineHeight: 1, display: "inline-block", fontWeight: 700, ...style }}>{ch}</span>; }
+function Logo() { return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#14161A" strokeWidth="2.4" strokeLinecap="round"><path d="M6.5 6v12M3.2 8.5v7M17.5 6v12M20.8 8.5v7M6.5 12h11" /></svg>; }
+
+function MiniChart({ data, color }) {
+  if (data.length < 2) return <div style={{ fontSize: 13, color: C.faint, padding: "14px 0 18px" }}>Log 2+ sessions to see your trend.</div>;
+  const vals = data.map((d) => d.val);
+  const min = Math.min(...vals), max = Math.max(...vals), rng = (max - min) || 1;
+  const W = 320, H = 150, pad = 22;
+  const pts = data.map((d, i) => {
+    const x = pad + (i / (data.length - 1)) * (W - pad - 8);
+    const y = 10 + (1 - (d.val - min) / rng) * (H - 34);
+    return [x, y];
+  });
+  const path = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  return (
+    <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", height: H, marginBottom: 6 }}>
+      {[0, 0.5, 1].map((g) => <line key={g} x1={pad} x2={W - 8} y1={10 + g * (H - 34)} y2={10 + g * (H - 34)} stroke={C.line} strokeDasharray="3 3" />)}
+      <text x={pad} y={H - 6} fill={C.faint} fontSize="11">{data[0].d}</text>
+      <text x={W - 8} y={H - 6} fill={C.faint} fontSize="11" textAnchor="end">{data[data.length - 1].d}</text>
+      <text x={4} y={16} fill={C.faint} fontSize="11">{max}</text>
+      <text x={4} y={H - 26} fill={C.faint} fontSize="11">{min}</text>
+      <path d={path} fill="none" stroke={color} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+      {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="3" fill={color} />)}
+    </svg>
+  );
+}
+
+const fieldLabel = { fontSize: 11, color: C.faint, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600 };
+const Field = ({ label, children }) => <div><div style={fieldLabel}>{label}</div>{children}</div>;
+const Row = ({ label, children }) => <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}><span style={{ fontSize: 13, color: C.sub }}>{label}</span><div style={{ display: "flex", gap: 6 }}>{children}</div></div>;
+const Chip = ({ active, onClick, children }) => <button onClick={onClick} style={{ padding: "5px 11px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "1px solid " + (active ? C.weight : C.line), background: active ? "rgba(242,169,59,0.12)" : C.panel2, color: active ? C.weight : C.sub }}>{children}</button>;
+const Lever = ({ c, ch, title, children }) => <div style={{ display: "flex", gap: 11, marginBottom: 14 }}><div style={{ width: 26, height: 26, borderRadius: 7, background: c + "1f", display: "grid", placeItems: "center", flexShrink: 0 }}><G ch={ch} size={15} color={c} /></div><div><div style={{ fontWeight: 700, fontSize: 13.5, color: c, marginBottom: 2 }}>{title}</div><div style={{ fontSize: 12.5, color: C.sub, lineHeight: 1.5 }}>{children}</div></div></div>;
+const feelColor = (f) => ({ easy: C.reps, solid: C.text, hard: C.weight, grind: C.back }[f] || C.sub);
+const input = { background: C.bg, border: "1px solid " + C.line, borderRadius: 8, color: C.text, padding: "9px 11px", fontSize: 16, outline: "none", fontFamily: "ui-monospace, monospace" };
+const iconBtn = { background: C.panel2, border: "1px solid " + C.line, borderRadius: 8, padding: 8, cursor: "pointer", display: "grid", placeItems: "center" };
+const primaryBtn = { width: "100%", padding: "13px 0", borderRadius: 10, border: "none", background: C.weight, color: "#14161A", fontWeight: 800, fontSize: 15, cursor: "pointer" };
+
+function App() {
+  const init = load() || {};
+  const [logs, setLogs] = useState(init.logs || []);
+  const [custom, setCustom] = useState(init.custom || []);
+  const [unit, setUnit] = useState(init.unit || "lb");
+  const [inc, setInc] = useState(init.inc || (init.unit === "kg" ? 2.5 : 5));
+  const [day, setDay] = useState("Upper A");
+  const [exId, setExId] = useState("ua1");
+  const [tab, setTab] = useState("plan");
+  const [showHow, setShowHow] = useState(false);
+  const [showSet, setShowSet] = useState(false);
+  const [wIn, setWIn] = useState("");
+  const [repsIn, setRepsIn] = useState(["", ""]);
+  const [distIn, setDistIn] = useState("30");
+  const [tripsIn, setTripsIn] = useState("3");
+  const [feel, setFeel] = useState("solid");
+  const [beat, setBeat] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [cName, setCName] = useState(""); const [cLo, setCLo] = useState("8"); const [cHi, setCHi] = useState("12"); const [cBig, setCBig] = useState(false);
+
+  useEffect(() => { persist({ logs, custom, unit, inc }); }, [logs, custom, unit, inc]);
+
+  const exercises = useMemo(() => [...DEFAULTS, ...custom], [custom]);
+  const dayExercises = exercises.filter((e) => e.day === day);
+  const ex = exercises.find((e) => e.id === exId) || dayExercises[0];
+  const rows = logs.filter((l) => l.exId === (ex && ex.id)).sort((a, b) => a.t - b.t);
+  const rec = ex ? recommend(ex, rows, inc, unit) : null;
+  const chartData = rows.map((l) => ({ d: new Date(l.t).toLocaleDateString(undefined, { month: "numeric", day: "numeric" }), val: ex && ex.carry ? l.weight : Math.round(Math.max(...l.reps.map((r) => epley(l.weight, r)))) }));
+  const lastLog = rows[rows.length - 1];
+
+  function pickDay(d) { setDay(d); const f = exercises.find((e) => e.day === d); if (f) setExId(f.id); setShowSet(false); }
+  function logSession() {
+    const weight = parseFloat(wIn); if (!weight || weight <= 0) return;
+    if (ex.carry) { const dist = parseInt(distIn, 10), trips = parseInt(tripsIn, 10); if (!dist || !trips) return; setLogs([...logs, { id: uid(), exId: ex.id, t: Date.now(), weight, dist, trips, feel, beat, carry: true }]); }
+    else { const reps = repsIn.map((r) => parseInt(r, 10)).filter((n) => n > 0); if (!reps.length) return; setLogs([...logs, { id: uid(), exId: ex.id, t: Date.now(), weight, reps, feel, beat }]); setRepsIn(repsIn.map(() => "")); }
+    setFlash(true); setTimeout(() => setFlash(false), 1400); setBeat(false);
+  }
+  function addCustom() { if (!cName.trim()) return; const id = "c" + uid().slice(0, 6); setCustom([...custom, { id, day, name: cName.trim(), lo: parseInt(cLo) || 8, hi: parseInt(cHi) || 12, big: cBig }]); setCName(""); setShowAdd(false); setExId(id); }
+
+  return (
+    <div style={{ background: C.bg, color: C.text, minHeight: "100vh", fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto" }}>
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "max(18px, env(safe-area-inset-top)) 16px 60px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: C.weight, display: "grid", placeItems: "center" }}><Logo /></div>
+            <div><div style={{ fontWeight: 800, letterSpacing: "-0.02em", fontSize: 17 }}>OVERLOAD</div><div style={{ fontSize: 11, color: C.faint, letterSpacing: "0.14em", textTransform: "uppercase" }}>Upper / Lower tracker</div></div>
+          </div>
+          <button onClick={() => setShowSet(!showSet)} style={iconBtn}><G ch={"\u2699"} size={18} color={C.sub} /></button>
+        </div>
+
+        {showSet && <Panel style={{ padding: 14, marginBottom: 14 }}>
+          <Row label="Units">{["lb", "kg"].map((u) => <Chip key={u} active={unit === u} onClick={() => { setUnit(u); setInc(u === "kg" ? 2.5 : 5); }}>{u}</Chip>)}</Row>
+          <Row label="Smallest plate jump">{(unit === "kg" ? [1.25, 2.5, 5] : [2.5, 5, 10]).map((n) => <Chip key={n} active={inc === n} onClick={() => setInc(n)}>{n}</Chip>)}</Row>
+          <div style={{ fontSize: 12, color: C.faint, marginTop: 4 }}>Weight jumps round to this. Big lifts (RDL, hip thrust, carries) jump double.</div>
+        </Panel>}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginBottom: 12 }}>
+          {DAYS.map((d) => <button key={d} onClick={() => pickDay(d)} style={{ padding: "9px 0", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1px solid " + (day === d ? C.weight : C.line), background: day === d ? "rgba(242,169,59,0.12)" : C.panel, color: day === d ? C.weight : C.sub }}>{d}</button>)}
+        </div>
+
+        <Panel style={{ padding: 6, marginBottom: 14 }}>
+          {dayExercises.map((e) => <button key={e.id} onClick={() => setExId(e.id)} style={{ width: "100%", textAlign: "left", padding: "11px 12px", borderRadius: 9, cursor: "pointer", border: "none", marginBottom: 2, background: e.id === exId ? C.panel2 : "transparent", color: e.id === exId ? C.text : C.sub, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: e.id === exId ? 700 : 500, fontSize: 14 }}>{e.name}</span>
+            <span style={{ fontSize: 12, color: C.faint, fontFamily: "ui-monospace, monospace" }}>{e.carry ? e.lo + "-" + e.hi + "m" : e.lo + "-" + e.hi}</span>
+          </button>)}
+          <button onClick={() => setShowAdd(!showAdd)} style={{ width: "100%", padding: "9px 12px", borderRadius: 9, cursor: "pointer", border: "none", background: "transparent", color: C.faint, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><G ch={"+"} size={14} color={C.faint} /> Add exercise to {day}</button>
+          {showAdd && <div style={{ padding: 10, borderTop: "1px solid " + C.line, marginTop: 4 }}>
+            <input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="Exercise name" style={input} />
+            <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+              <input value={cLo} onChange={(e) => setCLo(e.target.value)} inputMode="numeric" style={{ ...input, width: 56 }} />
+              <span style={{ color: C.faint }}>to</span>
+              <input value={cHi} onChange={(e) => setCHi(e.target.value)} inputMode="numeric" style={{ ...input, width: 56 }} />
+              <span style={{ color: C.sub, fontSize: 13 }}>reps</span>
+              <Chip active={cBig} onClick={() => setCBig(!cBig)}>big lift</Chip>
+            </div>
+            <button onClick={addCustom} style={{ ...primaryBtn, marginTop: 10 }}>Add</button>
+          </div>}
+        </Panel>
+
+        {rec && <Panel style={{ padding: 18, marginBottom: 14, borderColor: rec.c, boxShadow: "0 0 0 1px " + rec.c + "22" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><G ch={rec.icon || "\u26A1"} size={16} color={rec.c} /><span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.12em", color: rec.c }}>{rec.v}</span></div>
+          <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05 }}>{rec.head}</div>
+          {rec.sub && <div style={{ fontSize: 13, color: C.sub, marginTop: 5, fontFamily: "ui-monospace, monospace" }}>{rec.sub}</div>}
+          <div style={{ fontSize: 13.5, color: C.sub, lineHeight: 1.5, marginTop: 10 }}>{rec.detail}</div>
+          {lastLog && <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid " + C.line, fontSize: 12, color: C.faint, fontFamily: "ui-monospace, monospace" }}>
+            {lastLog.carry ? "Last: " + lastLog.weight + unit + " \u00D7 " + lastLog.dist + "m \u00D7 " + lastLog.trips + " trips \u00B7 felt " + lastLog.feel + (lastLog.beat ? " \u00B7 low recovery" : "")
+              : "Last: " + lastLog.weight + unit + " \u00D7 " + lastLog.reps.join(", ") + " \u00B7 felt " + lastLog.feel + (lastLog.beat ? " \u00B7 low recovery" : "") + " \u00B7 est 1RM " + Math.round(Math.max(...lastLog.reps.map((r) => epley(lastLog.weight, r)))) + unit}
+          </div>}
+        </Panel>}
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          {[["plan", "Log set"], ["history", "Progress"]].map(([k, l]) => <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1px solid " + (tab === k ? C.line : "transparent"), background: tab === k ? C.panel2 : C.panel, color: tab === k ? C.text : C.sub }}>{l}</button>)}
+        </div>
+
+        {tab === "plan" && <Panel style={{ padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.sub, marginBottom: 10 }}>{ex && ex.name}</div>
+          {ex && ex.carry ? <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+            <Field label={"Load (" + unit + ", total)"}><input value={wIn} onChange={(e) => setWIn(e.target.value)} inputMode="decimal" placeholder="0" style={{ ...input, width: 90, fontSize: 18 }} /></Field>
+            <Field label="Distance (m)"><input value={distIn} onChange={(e) => setDistIn(e.target.value)} inputMode="numeric" style={{ ...input, width: 70, fontSize: 18 }} /></Field>
+            <Field label="Trips"><input value={tripsIn} onChange={(e) => setTripsIn(e.target.value)} inputMode="numeric" style={{ ...input, width: 60, fontSize: 18 }} /></Field>
+          </div> : <div style={{ display: "flex", gap: 10, marginBottom: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <Field label={"Weight (" + unit + ")"}><input value={wIn} onChange={(e) => setWIn(e.target.value)} inputMode="decimal" placeholder="0" style={{ ...input, width: 90, fontSize: 18 }} /></Field>
+            <div><div style={fieldLabel}>Reps per set</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {repsIn.map((r, i) => <input key={i} value={r} onChange={(e) => { const c = [...repsIn]; c[i] = e.target.value; setRepsIn(c); }} inputMode="numeric" placeholder={"S" + (i + 1)} style={{ ...input, width: 52, fontSize: 18, textAlign: "center" }} />)}
+              <button onClick={() => setRepsIn([...repsIn, ""])} style={iconBtn}><G ch={"+"} size={16} color={C.sub} /></button>
+              {repsIn.length > 1 && <button onClick={() => setRepsIn(repsIn.slice(0, -1))} style={iconBtn}><G ch={"\u2212"} size={16} color={C.sub} /></button>}
+            </div></div>
+          </div>}
+
+          <div style={fieldLabel}>{ex && ex.carry ? "How did the carry feel?" : "How did the hardest set feel?"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 6, marginBottom: 6 }}>
+            {FEELS.map((f) => <button key={f.k} onClick={() => setFeel(f.k)} style={{ textAlign: "left", padding: "10px 12px", borderRadius: 9, cursor: "pointer", border: "1px solid " + (feel === f.k ? C.weight : C.line), background: feel === f.k ? "rgba(242,169,59,0.10)" : C.panel2 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: feel === f.k ? C.weight : C.text }}>{f.label}</div>
+              <div style={{ fontSize: 11, color: C.faint, marginTop: 2 }}>{f.hint}</div>
+            </button>)}
+          </div>
+          <button onClick={() => setBeat(!beat)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 12px", marginTop: 4, borderRadius: 9, cursor: "pointer", border: "1px solid " + (beat ? C.back : C.line), background: beat ? "rgba(229,96,77,0.10)" : C.panel2, color: beat ? C.back : C.sub, fontSize: 13 }}>
+            <div style={{ width: 16, height: 16, borderRadius: 4, border: "1px solid " + (beat ? C.back : C.faint), display: "grid", placeItems: "center" }}>{beat && <G ch={"\u2713"} size={12} color={C.back} />}</div>
+            Under-recovered today (bad sleep / still sore)
+          </button>
+          <button onClick={logSession} style={{ ...primaryBtn, marginTop: 14, background: flash ? C.reps : C.weight }}>{flash ? "Logged \u2713" : "Log this session"}</button>
+        </Panel>}
+
+        {tab === "history" && <Panel style={{ padding: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}><G ch={"\u2197"} size={15} color={C.weight} /><span style={{ fontSize: 13, fontWeight: 700 }}>{ex && ex.carry ? "Load trend" : "Estimated 1RM trend"} -- {ex && ex.name}</span></div>
+          <MiniChart data={chartData} color={C.weight} />
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, margin: "10px 0 8px" }}>Session log</div>
+          {rows.length === 0 && <div style={{ fontSize: 13, color: C.faint }}>No sessions yet.</div>}
+          {rows.slice().reverse().map((l) => <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid " + C.line }}>
+            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}><span style={{ color: C.text, fontWeight: 700 }}>{l.weight}{unit}</span><span style={{ color: C.sub }}> {l.carry ? "\u00D7 " + l.dist + "m \u00D7 " + l.trips : "\u00D7 " + l.reps.join(", ")}</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 11, color: feelColor(l.feel), textTransform: "uppercase", letterSpacing: "0.08em" }}>{l.feel}</span>
+              <span style={{ fontSize: 11, color: C.faint }}>{new Date(l.t).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+              <button onClick={() => setLogs(logs.filter((x) => x.id !== l.id))} style={{ ...iconBtn, padding: 4 }}><G ch={"\u2212"} size={13} color={C.faint} /></button>
+            </div>
+          </div>)}
+        </Panel>}
+
+        <button onClick={() => setShowHow(!showHow)} style={{ width: "100%", marginTop: 14, padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: "1px solid " + C.line, background: C.panel, color: C.sub, fontSize: 13, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          How the recommendations work <G ch={"\u2304"} size={16} color={C.sub} style={{ transform: showHow ? "rotate(180deg)" : "none", transition: "0.2s" }} />
+        </button>
+        {showHow && <Panel style={{ padding: 16, marginTop: 8 }}>
+          <Lever c={C.reps} ch={"\u21BB"} title="Reps first">Below the top of your range? Add one rep per set, same weight. Default move -- climb reps before load.</Lever>
+          <Lever c={C.weight} ch={"\u2191"} title="Then weight">Hit the top of the range on every set (or it felt easy)? Load goes up -- {unit === "kg" ? "2.5" : "5"}{unit} on most lifts, double on big lifts, double again if it felt easy. Then reset to the bottom of the range.</Lever>
+          <Lever c={C.set} ch={"\u2261"} title="Sets only when stalled">Reps and weight flat 3 sessions and recovering well? Add one set (capped at 4) to break the plateau -- not every week.</Lever>
+          <Lever c={C.back} ch={"\u26A0"} title="Back off when needed">Ground out below your range, hold or drop ~10%. Flag low recovery and it tells you to repeat, not push.</Lever>
+          <Lever c={C.reps} ch={"\u2192"} title="Carries progress differently">Farmer's carries aren't rep-based -- you log load, distance, and trips, and progress by adding weight or walking farther.</Lever>
+          <div style={{ fontSize: 11.5, color: C.faint, marginTop: 4, lineHeight: 1.5 }}>"Est 1RM" uses Epley (weight x (1 + reps/30)) to track strength across rep counts. It's for trend-watching, not a max to attempt.</div>
+        </Panel>}
+        <div style={{ textAlign: "center", fontSize: 11, color: C.faint, marginTop: 20 }}>Saves to this device automatically.</div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
