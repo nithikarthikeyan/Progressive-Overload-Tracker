@@ -109,9 +109,12 @@ function recommend(ex,rows,inc,unit){
 
 /* ---------- state + storage ---------- */
 var KEY="po:data:v2";
-function loadData(){try{var r=localStorage.getItem(KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
-function persist(){S._t=Date.now();try{localStorage.setItem(KEY,JSON.stringify({logs:S.logs,custom:S.custom,overrides:S.overrides,days:S.days,unit:S.unit,inc:S.inc,_t:S._t}));}catch(e){}schedulePush();}
-var saved=loadData()||{};
+function dataKey(){return (S&&S.auth&&S.auth.uid)?("po:data:v2:"+S.auth.uid):KEY;}
+function loadData(k){try{var r=localStorage.getItem(k||dataKey());return r?JSON.parse(r):null;}catch(e){return null;}}
+function persist(){S._t=Date.now();try{localStorage.setItem(dataKey(),JSON.stringify({logs:S.logs,custom:S.custom,overrides:S.overrides,days:S.days,unit:S.unit,inc:S.inc,_t:S._t}));}catch(e){}schedulePush();}
+function applyData(d){d=d||{};S.logs=d.logs||[];S.custom=d.custom||[];S.overrides=d.overrides||{};S.days=d.days||DAYS.slice();S.unit=d.unit||S.unit||"lb";S.inc=d.inc||S.inc||(S.unit==="kg"?2.5:5);S._t=d._t||0;if(S.days.indexOf(S.day)<0)S.day=S.days[0]||"";setFirstExForDay();}
+function loadAccountData(){var nd=loadData(dataKey());if(!nd){var lg=loadData(KEY);if(lg){nd=lg;try{localStorage.removeItem(KEY);}catch(e){}}}applyData(nd||{});}
+var saved=loadData(KEY)||{};
 /* ===== Supabase cloud sync — paste your project values below ===== */
 var SB_URL="https://swpaegiqesbjpcnmbzte.supabase.co";   /* base project URL — code adds /rest/v1 and /auth/v1 */
 var SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3cGFlZ2lxZXNianBjbm1ienRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MTA0MjgsImV4cCI6MjA5NzI4NjQyOH0.tpOlM2RC9hlji1ndT_vsigGiWt3oLfbZJY5h5F8rr9U";   /* anon public key (safe to expose; RLS protects data) */
@@ -131,7 +134,7 @@ function cloudPut(){return ensureToken().then(function(tok){return sbFetch(SB_UR
 function pullMerge(){if(!S.auth||!syncEnabled())return Promise.resolve();return cloudGet().then(function(c){mergeBlob(c);try{localStorage.setItem(KEY,JSON.stringify(stateBlob()));}catch(e){}render();return cloudPut();}).catch(function(e){S.authMsg="Sync error: "+e;render();});}
 var pushTimer=null;
 function schedulePush(){if(!S.auth||!syncEnabled())return;clearTimeout(pushTimer);pushTimer=setTimeout(function(){cloudPut().catch(function(){});},1500);}
-function doAuth(kind){var email=(S.aForm.email||"").trim(),pw=S.aForm.pw||"";if(!syncEnabled()){S.authMsg="Add your Supabase URL and key in the code first.";render();return;}if(!email||!pw){S.authMsg="Enter an email and password.";render();return;}S.authMsg=(kind==="signup"?"Creating account\u2026":"Signing in\u2026");render();var p=kind==="signup"?signUp(email,pw).then(function(d){return setSession(d)?d:signIn(email,pw);}):signIn(email,pw);p.then(function(){S.aForm={email:"",pw:""};S.authMsg="Signed in. Syncing\u2026";render();return pullMerge();}).then(function(){if(S.auth)S.authMsg="Synced \u2713";render();}).catch(function(e){S.authMsg=String(e);render();});}
+function doAuth(kind){var email=(S.aForm.email||"").trim(),pw=S.aForm.pw||"";if(!syncEnabled()){S.authMsg="Add your Supabase URL and key in the code first.";render();return;}if(!email||!pw){S.authMsg="Enter an email and password.";render();return;}S.authMsg=(kind==="signup"?"Creating account\u2026":"Signing in\u2026");render();var p=kind==="signup"?signUp(email,pw).then(function(d){return setSession(d)?d:signIn(email,pw);}):signIn(email,pw);p.then(function(){S.aForm={email:"",pw:""};loadAccountData();S.showSet=false;S.authMsg="Signed in. Syncing\u2026";render();return pullMerge();}).then(function(){if(S.auth)S.authMsg="Synced \u2713";render();}).catch(function(e){S.authMsg=String(e);render();});}
 /* ================================================================ */
 var saved2=saved;
 var S={
@@ -167,7 +170,29 @@ function accountHtml(){
  if(S.auth)return head+'<div style="font-size:13px;color:'+C.text+';font-weight:600">Signed in as '+esc(S.auth.email||"")+'</div><div style="font-size:12px;color:'+C.sub+';margin:4px 0 10px">Synced across your devices.</div><div style="display:flex;gap:8px"><button data-act="syncnow" style="flex:1;padding:9px 0;border-radius:11px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Sync now</button><button data-act="signout" style="flex:1;padding:9px 0;border-radius:11px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.back+';font-size:13px;font-weight:700">Sign out</button></div>'+msg+divider;
  return head+'<input data-field="aEmail" type="email" autocomplete="email" placeholder="Email" value="'+esc(S.aForm.email)+'" style="width:100%;margin-bottom:8px"><input data-field="aPw" type="password" autocomplete="current-password" placeholder="Password" value="'+esc(S.aForm.pw)+'" style="width:100%"><div style="display:flex;gap:8px;margin-top:10px"><button class="primary" data-act="signin" style="flex:1;padding:11px 0;font-size:14px">Sign in</button><button data-act="signup" style="flex:1;padding:11px 0;border-radius:14px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-weight:700;font-size:14px">Create account</button></div><div style="font-size:12px;color:'+C.faint+';margin-top:8px">Sign in to sync your log across devices and back it up automatically.</div>'+msg+divider;
 }
+function loginHtml(){
+ var msg=S.authMsg?'<div style="font-size:12.5px;color:'+C.sub+';margin-top:14px;text-align:center;min-height:16px">'+esc(S.authMsg)+'</div>':'<div style="min-height:16px;margin-top:14px"></div>';
+ var off=!syncEnabled()?'<div style="font-size:12.5px;color:'+C.back+';text-align:center;margin-top:8px;line-height:1.5">Cloud accounts are off \u2014 add your Supabase URL and key in the code to enable sign-in.</div>':'';
+ return '<div class="wrap" style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;max-width:400px">'
+  +'<div style="display:flex;flex-direction:column;align-items:center;margin-bottom:26px">'
+   +'<div style="width:62px;height:62px;border-radius:18px;background:'+C.text+';display:grid;place-items:center;box-shadow:0 12px 28px rgba(24,26,32,0.22);margin-bottom:16px"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"><path d="M6.5 6v12M3.2 8.5v7M17.5 6v12M20.8 8.5v7M6.5 12h11"/></svg></div>'
+   +'<div style="font-weight:800;letter-spacing:-.02em;font-size:30px">OVERLOAD</div>'
+   +'<div style="font-size:13px;color:'+C.sub+';margin-top:4px">Sign in to your training log</div>'
+  +'</div>'
+  +'<div class="panel" style="padding:22px">'
+   +'<div class="lbl">Email</div>'
+   +'<input data-field="aEmail" type="email" autocomplete="email" placeholder="you@email.com" value="'+esc(S.aForm.email)+'" style="width:100%;margin-bottom:14px">'
+   +'<div class="lbl">Password</div>'
+   +'<input data-field="aPw" type="password" autocomplete="current-password" placeholder="Your password" value="'+esc(S.aForm.pw)+'" style="width:100%">'
+   +'<button class="primary" data-act="signin" style="margin-top:18px">Sign in</button>'
+   +'<button data-act="signup" style="width:100%;margin-top:10px;padding:13px 0;border-radius:15px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-weight:700;font-size:14px">Create account</button>'
+   +msg+off
+  +'</div>'
+  +'<div style="text-align:center;font-size:11px;color:'+C.faint+';margin-top:18px;line-height:1.6">New here? Tap <b style="color:'+C.sub+'">Create account</b>.<br>Your log syncs to your account and stays private to you.</div>'
+ +'</div>';
+}
 function render(){
+ if(!S.auth){root.innerHTML=loginHtml();return;}
  var ex=curEx(),all=exercises(),dayEx=all.filter(function(e){return e.day===S.day;});
  var rows=rowsFor(ex&&ex.id),rec=ex?recommend(ex,rows,S.inc,S.unit):null,lastLog=rows[rows.length-1];
  var chartData=rows.map(function(l){return {d:new Date(l.t).toLocaleDateString(undefined,{month:"numeric",day:"numeric"}),val:(ex&&ex.carry)?l.weight:Math.round(setE1(topSet(setsOf(l))))};});
@@ -262,7 +287,7 @@ function onClick(e){
  else if(act==="del"){S.logs=S.logs.filter(function(x){return x.id!==val;});persist();}
  else if(act==="signin"){doAuth("signin");return;}
  else if(act==="signup"){doAuth("signup");return;}
- else if(act==="signout"){S.auth=null;saveAuth(null);S.authMsg="Signed out.";render();return;}
+ else if(act==="signout"){S.auth=null;saveAuth(null);applyData({});S.aForm={email:"",pw:""};S.showSet=false;S.authMsg="";render();return;}
  else if(act==="syncnow"){if(S.auth){S.authMsg="Syncing\u2026";render();pullMerge().then(function(){if(S.auth&&S.authMsg.indexOf("error")<0)S.authMsg="Synced \u2713";render();});}return;}
  else if(act==="export"){doExport();return;}
  else if(act==="import"){fileInput.click();return;}
@@ -295,6 +320,7 @@ function onInput(e){var el=e.target,f=el.getAttribute("data-field");if(!f)return
 }
 function onChange(e){var el=e.target;if(el.getAttribute&&el.getAttribute("data-field")==="dayName"){renameDay(parseInt(el.getAttribute("data-idx"),10),el.value);}}
 var root=document.getElementById("root");
+if(S.auth){loadAccountData();persist();}
 if(S.days.indexOf(S.day)<0)S.day=S.days[0]||"";
 setFirstExForDay();
 root.addEventListener("click",onClick);
@@ -305,3 +331,4 @@ if(S.auth&&syncEnabled()){pullMerge();}
 </script>
 </body>
 </html>
+
