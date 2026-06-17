@@ -110,11 +110,33 @@ function recommend(ex,rows,inc,unit){
 /* ---------- state + storage ---------- */
 var KEY="po:data:v2";
 function loadData(){try{var r=localStorage.getItem(KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
-function persist(){try{localStorage.setItem(KEY,JSON.stringify({logs:S.logs,custom:S.custom,overrides:S.overrides,days:S.days,unit:S.unit,inc:S.inc}));}catch(e){}}
+function persist(){S._t=Date.now();try{localStorage.setItem(KEY,JSON.stringify({logs:S.logs,custom:S.custom,overrides:S.overrides,days:S.days,unit:S.unit,inc:S.inc,_t:S._t}));}catch(e){}schedulePush();}
 var saved=loadData()||{};
+/* ===== Supabase cloud sync — paste your project values below ===== */
+var SB_URL="https://swpaegiqesbjpcnmbzte.supabase.co";   /* base project URL — code adds /rest/v1 and /auth/v1 */
+var SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3cGFlZ2lxZXNianBjbm1ienRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MTA0MjgsImV4cCI6MjA5NzI4NjQyOH0.tpOlM2RC9hlji1ndT_vsigGiWt3oLfbZJY5h5F8rr9U";   /* anon public key (safe to expose; RLS protects data) */
+function syncEnabled(){return !!(SB_URL&&SB_KEY);}
+function loadAuth(){try{return JSON.parse(localStorage.getItem("po:auth")||"null");}catch(e){return null;}}
+function saveAuth(a){try{a?localStorage.setItem("po:auth",JSON.stringify(a)):localStorage.removeItem("po:auth");}catch(e){}}
+async function sbFetch(url,opts){opts=opts||{};opts.headers=Object.assign({apikey:SB_KEY,"Content-Type":"application/json"},opts.headers||{});var res=await fetch(url,opts);var txt=await res.text();var j=txt?JSON.parse(txt):null;if(!res.ok)throw ((j&&(j.error_description||j.msg||j.message))||("Error "+res.status));return j;}
+function setSession(d){if(!d||!d.access_token)return false;S.auth={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:Date.now()+((d.expires_in||3600)*1000)-60000,email:(d.user&&d.user.email)||(S.auth&&S.auth.email),uid:(d.user&&d.user.id)||(S.auth&&S.auth.uid)};saveAuth(S.auth);return true;}
+function signUp(email,pw){return sbFetch(SB_URL+"/auth/v1/signup",{method:"POST",body:JSON.stringify({email:email,password:pw})});}
+function signIn(email,pw){return sbFetch(SB_URL+"/auth/v1/token?grant_type=password",{method:"POST",body:JSON.stringify({email:email,password:pw})}).then(function(d){setSession(d);return d;});}
+function ensureToken(){if(!S.auth)return Promise.reject("not signed in");if(Date.now()<S.auth.expires_at)return Promise.resolve(S.auth.access_token);return sbFetch(SB_URL+"/auth/v1/token?grant_type=refresh_token",{method:"POST",body:JSON.stringify({refresh_token:S.auth.refresh_token})}).then(function(d){setSession(d);return S.auth.access_token;});}
+function stateBlob(){return {logs:S.logs,custom:S.custom,overrides:S.overrides,days:S.days,unit:S.unit,inc:S.inc,_t:S._t};}
+function dedupeById(arr){var seen={},out=[];(arr||[]).forEach(function(x){if(x&&x.id&&!seen[x.id]){seen[x.id]=1;out.push(x);}});return out;}
+function mergeBlob(c){if(!c)return;S.logs=dedupeById((c.logs||[]).concat(S.logs));S.custom=dedupeById((c.custom||[]).concat(S.custom));if((c._t||0)>(S._t||0)){S.overrides=c.overrides||S.overrides;S.days=c.days||S.days;S.unit=c.unit||S.unit;S.inc=c.inc||S.inc;}}
+function cloudGet(){return ensureToken().then(function(tok){return sbFetch(SB_URL+"/rest/v1/app_state?user_id=eq."+S.auth.uid+"&select=data",{headers:{Authorization:"Bearer "+tok}});}).then(function(rows){return rows&&rows[0]?rows[0].data:null;});}
+function cloudPut(){return ensureToken().then(function(tok){return sbFetch(SB_URL+"/rest/v1/app_state?on_conflict=user_id",{method:"POST",headers:{Authorization:"Bearer "+tok,Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({user_id:S.auth.uid,data:stateBlob(),updated_at:new Date().toISOString()})});});}
+function pullMerge(){if(!S.auth||!syncEnabled())return Promise.resolve();return cloudGet().then(function(c){mergeBlob(c);try{localStorage.setItem(KEY,JSON.stringify(stateBlob()));}catch(e){}render();return cloudPut();}).catch(function(e){S.authMsg="Sync error: "+e;render();});}
+var pushTimer=null;
+function schedulePush(){if(!S.auth||!syncEnabled())return;clearTimeout(pushTimer);pushTimer=setTimeout(function(){cloudPut().catch(function(){});},1500);}
+function doAuth(kind){var email=(S.aForm.email||"").trim(),pw=S.aForm.pw||"";if(!syncEnabled()){S.authMsg="Add your Supabase URL and key in the code first.";render();return;}if(!email||!pw){S.authMsg="Enter an email and password.";render();return;}S.authMsg=(kind==="signup"?"Creating account\u2026":"Signing in\u2026");render();var p=kind==="signup"?signUp(email,pw).then(function(d){return setSession(d)?d:signIn(email,pw);}):signIn(email,pw);p.then(function(){S.aForm={email:"",pw:""};S.authMsg="Signed in. Syncing\u2026";render();return pullMerge();}).then(function(){if(S.auth)S.authMsg="Synced \u2713";render();}).catch(function(e){S.authMsg=String(e);render();});}
+/* ================================================================ */
+var saved2=saved;
 var S={
  logs:saved.logs||[],custom:saved.custom||[],overrides:saved.overrides||{},unit:saved.unit||"lb",inc:saved.inc||(saved.unit==="kg"?2.5:5),
- days:saved.days||DAYS.slice(),day:"Upper A",exId:"ua1",tab:"plan",showHow:false,showSet:false,showAdd:false,editEx:null,
+ auth:loadAuth(),aForm:{email:"",pw:""},authMsg:"",_t:saved._t||0,days:saved.days||DAYS.slice(),day:"Upper A",exId:"ua1",tab:"plan",showHow:false,showSet:false,showAdd:false,editEx:null,
  feel:"solid",beat:false,flash:false,
  form:{sets:[{w:"",r:""},{w:"",r:""}],cw:"",dist:"30",trips:"3"},
  cForm:{name:"",lo:"8",hi:"12",big:false},
@@ -138,6 +160,13 @@ function miniChart(data,color){
 function feelColor(f){return {easy:C.reps,solid:C.text,hard:C.weight,grind:C.back}[f]||C.sub;}
 function shade(hex,p){var n=parseInt(hex.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;r=Math.round(r*(1-p));g=Math.round(g*(1-p));b=Math.round(b*(1-p));return "#"+("000000"+((r<<16)+(g<<8)+b).toString(16)).slice(-6);}
 
+function accountHtml(){
+ var msg=S.authMsg?'<div style="font-size:12px;color:'+C.sub+';margin-top:8px">'+esc(S.authMsg)+'</div>':"";
+ var head='<div class="lbl">Account</div>',divider='<div style="border-top:1px solid '+C.line+';margin:12px 0 10px"></div>';
+ if(!syncEnabled())return head+'<div style="font-size:12.5px;color:'+C.sub+';line-height:1.5">Cloud sync is off. Add your Supabase URL and anon key near the top of the code to turn on sign-in and cross-device sync.</div>'+divider;
+ if(S.auth)return head+'<div style="font-size:13px;color:'+C.text+';font-weight:600">Signed in as '+esc(S.auth.email||"")+'</div><div style="font-size:12px;color:'+C.sub+';margin:4px 0 10px">Synced across your devices.</div><div style="display:flex;gap:8px"><button data-act="syncnow" style="flex:1;padding:9px 0;border-radius:11px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Sync now</button><button data-act="signout" style="flex:1;padding:9px 0;border-radius:11px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.back+';font-size:13px;font-weight:700">Sign out</button></div>'+msg+divider;
+ return head+'<input data-field="aEmail" type="email" autocomplete="email" placeholder="Email" value="'+esc(S.aForm.email)+'" style="width:100%;margin-bottom:8px"><input data-field="aPw" type="password" autocomplete="current-password" placeholder="Password" value="'+esc(S.aForm.pw)+'" style="width:100%"><div style="display:flex;gap:8px;margin-top:10px"><button class="primary" data-act="signin" style="flex:1;padding:11px 0;font-size:14px">Sign in</button><button data-act="signup" style="flex:1;padding:11px 0;border-radius:14px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-weight:700;font-size:14px">Create account</button></div><div style="font-size:12px;color:'+C.faint+';margin-top:8px">Sign in to sync your log across devices and back it up automatically.</div>'+msg+divider;
+}
 function render(){
  var ex=curEx(),all=exercises(),dayEx=all.filter(function(e){return e.day===S.day;});
  var rows=rowsFor(ex&&ex.id),rec=ex?recommend(ex,rows,S.inc,S.unit):null,lastLog=rows[rows.length-1];
@@ -147,7 +176,7 @@ function render(){
  H+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:11px;background:'+C.text+';display:grid;place-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"><path d="M6.5 6v12M3.2 8.5v7M17.5 6v12M20.8 8.5v7M6.5 12h11"/></svg></div><div><div style="font-weight:800;letter-spacing:-.02em;font-size:24px">OVERLOAD</div></div></div><button class="iconBtn" data-act="toggleSet"><span style="font-size:18px;color:'+C.sub+'">\u2699</span></button></div>';
 
  if(S.showSet){
-  H+='<div class="panel" style="padding:14px;margin-bottom:14px"><div class="row"><span style="font-size:13px;color:'+C.sub+'">Units</span><div style="display:flex;gap:6px">'+["lb","kg"].map(function(u){return '<button class="chip '+(S.unit===u?"active":"")+'" data-act="unit" data-val="'+u+'">'+u+'</button>';}).join("")+'</div></div><div class="row"><span style="font-size:13px;color:'+C.sub+'">Smallest plate jump</span><div style="display:flex;gap:6px">'+(S.unit==="kg"?[1.25,2.5,5]:[2.5,5,10]).map(function(n){return '<button class="chip '+(S.inc===n?"active":"")+'" data-act="inc" data-val="'+n+'">'+n+'</button>';}).join("")+'</div></div><div style="font-size:12px;color:'+C.faint+';margin-top:4px">Weight jumps round to this. Big lifts jump double.</div><div style="border-top:1px solid '+C.line+';margin:12px 0 10px"></div><div class="lbl">Days \u00B7 tap a name to rename</div>'+S.days.map(function(d,i){return '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center"><input data-field="dayName" data-idx="'+i+'" value="'+esc(d)+'" style="flex:1">'+(S.days.length>1?'<button class="iconBtn" data-act="rmDay" data-val="'+i+'"><span style="color:'+C.faint+';font-size:14px">\u2212</span></button>':"")+'</div>';}).join("")+'<button data-act="addDay" style="font-size:13px;color:'+C.faint+';padding:4px 0;display:flex;align-items:center;gap:6px">+ Add day</button><div style="font-size:12px;color:'+C.faint+';margin-top:6px">Renaming updates that day\u0027s exercises. Removing a day deletes its exercises.</div><div style="border-top:1px solid '+C.line+';margin:12px 0 10px"></div><div class="lbl">Backup \u00B7 '+S.logs.length+' sessions</div><div style="display:flex;gap:8px"><button data-act="export" style="flex:1;padding:9px 0;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Export backup</button><button data-act="import" style="flex:1;padding:9px 0;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Import backup</button></div><div style="font-size:12px;color:'+C.faint+';margin-top:8px">Export saves your full log as a file. Import merges a backup back in \u2014 nothing gets overwritten.</div></div>';
+  H+='<div class="panel" style="padding:14px;margin-bottom:14px">'+accountHtml()+'<div class="row"><span style="font-size:13px;color:'+C.sub+'">Units</span><div style="display:flex;gap:6px">'+["lb","kg"].map(function(u){return '<button class="chip '+(S.unit===u?"active":"")+'" data-act="unit" data-val="'+u+'">'+u+'</button>';}).join("")+'</div></div><div class="row"><span style="font-size:13px;color:'+C.sub+'">Smallest plate jump</span><div style="display:flex;gap:6px">'+(S.unit==="kg"?[1.25,2.5,5]:[2.5,5,10]).map(function(n){return '<button class="chip '+(S.inc===n?"active":"")+'" data-act="inc" data-val="'+n+'">'+n+'</button>';}).join("")+'</div></div><div style="font-size:12px;color:'+C.faint+';margin-top:4px">Weight jumps round to this. Big lifts jump double.</div><div style="border-top:1px solid '+C.line+';margin:12px 0 10px"></div><div class="lbl">Days \u00B7 tap a name to rename</div>'+S.days.map(function(d,i){return '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center"><input data-field="dayName" data-idx="'+i+'" value="'+esc(d)+'" style="flex:1">'+(S.days.length>1?'<button class="iconBtn" data-act="rmDay" data-val="'+i+'"><span style="color:'+C.faint+';font-size:14px">\u2212</span></button>':"")+'</div>';}).join("")+'<button data-act="addDay" style="font-size:13px;color:'+C.faint+';padding:4px 0;display:flex;align-items:center;gap:6px">+ Add day</button><div style="font-size:12px;color:'+C.faint+';margin-top:6px">Renaming updates that day\u0027s exercises. Removing a day deletes its exercises.</div><div style="border-top:1px solid '+C.line+';margin:12px 0 10px"></div><div class="lbl">Backup \u00B7 '+S.logs.length+' sessions</div><div style="display:flex;gap:8px"><button data-act="export" style="flex:1;padding:9px 0;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Export backup</button><button data-act="import" style="flex:1;padding:9px 0;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Import backup</button></div><div style="font-size:12px;color:'+C.faint+';margin-top:8px">Export saves your full log as a file. Import merges a backup back in \u2014 nothing gets overwritten.</div></div>';
  }
 
  H+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px;margin-bottom:12px">'+S.days.map(function(d){return '<button class="dayBtn '+(S.day===d?"active":"")+'" data-act="pickDay" data-val="'+esc(d)+'">'+esc(d)+'</button>';}).join("")+'</div>';
@@ -231,6 +260,10 @@ function onClick(e){
  else if(act==="addDay"){var base="New Day",nm=base,k=2;while(S.days.indexOf(nm)>=0){nm=base+" "+k;k++;}S.days.push(nm);S.day=nm;S.exId=null;S.showAdd=false;persist();}
  else if(act==="rmDay"){var di=parseInt(val,10),dn=S.days[di];if(S.days.length<=1)return;if(!confirm("Remove '"+dn+"' and its exercises?"))return;exercises().forEach(function(e){if(e.day===dn)S.overrides[e.id]=Object.assign({},S.overrides[e.id],{deleted:true});});S.days.splice(di,1);if(S.day===dn){S.day=S.days[0];setFirstExForDay();}persist();}
  else if(act==="del"){S.logs=S.logs.filter(function(x){return x.id!==val;});persist();}
+ else if(act==="signin"){doAuth("signin");return;}
+ else if(act==="signup"){doAuth("signup");return;}
+ else if(act==="signout"){S.auth=null;saveAuth(null);S.authMsg="Signed out.";render();return;}
+ else if(act==="syncnow"){if(S.auth){S.authMsg="Syncing\u2026";render();pullMerge().then(function(){if(S.auth&&S.authMsg.indexOf("error")<0)S.authMsg="Synced \u2713";render();});}return;}
  else if(act==="export"){doExport();return;}
  else if(act==="import"){fileInput.click();return;}
  else if(act==="log"){doLog();return;}
@@ -246,6 +279,8 @@ function doExport(){try{var data=JSON.stringify({app:"overload",exported:new Dat
 function doImport(file){var reader=new FileReader();reader.onload=function(){try{var d=JSON.parse(reader.result);if(!d||!Array.isArray(d.logs))throw 0;var seen={},merged=[];S.logs.concat(d.logs).forEach(function(l){if(l&&l.id&&!seen[l.id]){seen[l.id]=1;merged.push(l);}});S.logs=merged;if(Array.isArray(d.custom)){var cs={},cm=[];S.custom.concat(d.custom).forEach(function(c){if(c&&c.id&&!cs[c.id]){cs[c.id]=1;cm.push(c);}});S.custom=cm;}if(d.overrides)S.overrides=Object.assign({},S.overrides,d.overrides);if(d.unit)S.unit=d.unit;if(d.inc)S.inc=d.inc;persist();render();alert("Backup imported \u2014 "+S.logs.length+" sessions total.");}catch(e){alert("Couldn't read that file. Make sure it's an Overload backup .json.");}};reader.readAsText(file);}
 var fileInput=document.createElement("input");fileInput.type="file";fileInput.accept="application/json,.json";fileInput.style.display="none";fileInput.addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(f)doImport(f);fileInput.value="";});document.body.appendChild(fileInput);
 function onInput(e){var el=e.target,f=el.getAttribute("data-field");if(!f)return;var idx=el.getAttribute("data-idx");
+ if(f==="aEmail"){S.aForm.email=el.value;return;}
+ if(f==="aPw"){S.aForm.pw=el.value;return;}
  if(f==="sw")S.form.sets[parseInt(idx,10)].w=el.value;
  else if(f==="sr")S.form.sets[parseInt(idx,10)].r=el.value;
  else if(f==="cw")S.form.cw=el.value;
@@ -266,6 +301,7 @@ root.addEventListener("click",onClick);
 root.addEventListener("input",onInput);
 root.addEventListener("change",onChange);
 render();
+if(S.auth&&syncEnabled()){pullMerge();}
 </script>
 </body>
 </html>
