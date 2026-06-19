@@ -109,12 +109,9 @@ function recommend(ex,rows,inc,unit){
 
 /* ---------- state + storage ---------- */
 var KEY="po:data:v2";
-function dataKey(){return (S&&S.auth&&S.auth.uid)?("po:data:v2:"+S.auth.uid):KEY;}
-function loadData(k){try{var r=localStorage.getItem(k||dataKey());return r?JSON.parse(r):null;}catch(e){return null;}}
-function persist(){S._t=Date.now();try{localStorage.setItem(dataKey(),JSON.stringify({logs:S.logs,custom:S.custom,overrides:S.overrides,days:S.days,unit:S.unit,inc:S.inc,_t:S._t}));}catch(e){}schedulePush();}
-function applyData(d){d=d||{};S.logs=d.logs||[];S.custom=d.custom||[];S.overrides=d.overrides||{};S.days=d.days||DAYS.slice();S.unit=d.unit||S.unit||"lb";S.inc=d.inc||S.inc||(S.unit==="kg"?2.5:5);S._t=d._t||0;if(S.days.indexOf(S.day)<0)S.day=S.days[0]||"";setFirstExForDay();}
-function loadAccountData(){var nd=loadData(dataKey());if(!nd){var lg=loadData(KEY);if(lg){nd=lg;try{localStorage.removeItem(KEY);}catch(e){}}}applyData(nd||{});}
-var saved=loadData(KEY)||{};
+function loadData(){try{var r=localStorage.getItem(KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
+function persist(){S._t=Date.now();try{localStorage.setItem(KEY,JSON.stringify({logs:S.logs,custom:S.custom,overrides:S.overrides,days:S.days,unit:S.unit,inc:S.inc,_t:S._t}));}catch(e){}schedulePush();}
+var saved=loadData()||{};
 /* ===== Supabase cloud sync — paste your project values below ===== */
 var SB_URL="https://swpaegiqesbjpcnmbzte.supabase.co";   /* base project URL — code adds /rest/v1 and /auth/v1 */
 var SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3cGFlZ2lxZXNianBjbm1ienRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MTA0MjgsImV4cCI6MjA5NzI4NjQyOH0.tpOlM2RC9hlji1ndT_vsigGiWt3oLfbZJY5h5F8rr9U";   /* anon public key (safe to expose; RLS protects data) */
@@ -134,12 +131,12 @@ function cloudPut(){return ensureToken().then(function(tok){return sbFetch(SB_UR
 function pullMerge(){if(!S.auth||!syncEnabled())return Promise.resolve();return cloudGet().then(function(c){mergeBlob(c);try{localStorage.setItem(KEY,JSON.stringify(stateBlob()));}catch(e){}render();return cloudPut();}).catch(function(e){S.authMsg="Sync error: "+e;render();});}
 var pushTimer=null;
 function schedulePush(){if(!S.auth||!syncEnabled())return;clearTimeout(pushTimer);pushTimer=setTimeout(function(){cloudPut().catch(function(){});},1500);}
-function doAuth(kind){var email=(S.aForm.email||"").trim(),pw=S.aForm.pw||"";if(!syncEnabled()){S.authMsg="Add your Supabase URL and key in the code first.";render();return;}if(!email||!pw){S.authMsg="Enter an email and password.";render();return;}S.authMsg=(kind==="signup"?"Creating account\u2026":"Signing in\u2026");render();var p=kind==="signup"?signUp(email,pw).then(function(d){return setSession(d)?d:signIn(email,pw);}):signIn(email,pw);p.then(function(){S.aForm={email:"",pw:""};loadAccountData();S.showSet=false;S.authMsg="Signed in. Syncing\u2026";render();return pullMerge();}).then(function(){if(S.auth)S.authMsg="Synced \u2713";render();}).catch(function(e){S.authMsg=String(e);render();});}
+function doAuth(kind){var email=(S.aForm.email||"").trim(),pw=S.aForm.pw||"";if(!syncEnabled()){S.authMsg="Add your Supabase URL and key in the code first.";render();return;}if(!email||!pw){S.authMsg="Enter an email and password.";render();return;}S.authMsg=(kind==="signup"?"Creating account\u2026":"Signing in\u2026");render();var p=kind==="signup"?signUp(email,pw).then(function(d){return setSession(d)?d:signIn(email,pw);}):signIn(email,pw);p.then(function(){S.aForm={email:"",pw:""};S.authMsg="Signed in. Syncing\u2026";render();return pullMerge();}).then(function(){if(S.auth)S.authMsg="Synced \u2713";render();}).catch(function(e){S.authMsg=String(e);render();});}
 /* ================================================================ */
 var saved2=saved;
 var S={
  logs:saved.logs||[],custom:saved.custom||[],overrides:saved.overrides||{},unit:saved.unit||"lb",inc:saved.inc||(saved.unit==="kg"?2.5:5),
- auth:loadAuth(),aForm:{email:"",pw:""},authMsg:"",_t:saved._t||0,days:saved.days||DAYS.slice(),day:"Upper A",exId:"ua1",tab:"plan",showHow:false,showSet:false,showAdd:false,editEx:null,
+ auth:loadAuth(),aForm:{email:"",pw:""},authMsg:"",_t:saved._t||0,histOpen:false,formEx:null,days:saved.days||DAYS.slice(),day:"Upper A",exId:null,tab:"plan",showHow:false,showSet:false,showAdd:false,editEx:null,
  feel:"solid",beat:false,flash:false,
  form:{sets:[{w:"",r:""},{w:"",r:""}],cw:"",dist:"30",trips:"3"},
  cForm:{name:"",lo:"8",hi:"12",big:false},
@@ -170,83 +167,46 @@ function accountHtml(){
  if(S.auth)return head+'<div style="font-size:13px;color:'+C.text+';font-weight:600">Signed in as '+esc(S.auth.email||"")+'</div><div style="font-size:12px;color:'+C.sub+';margin:4px 0 10px">Synced across your devices.</div><div style="display:flex;gap:8px"><button data-act="syncnow" style="flex:1;padding:9px 0;border-radius:11px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Sync now</button><button data-act="signout" style="flex:1;padding:9px 0;border-radius:11px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.back+';font-size:13px;font-weight:700">Sign out</button></div>'+msg+divider;
  return head+'<input data-field="aEmail" type="email" autocomplete="email" placeholder="Email" value="'+esc(S.aForm.email)+'" style="width:100%;margin-bottom:8px"><input data-field="aPw" type="password" autocomplete="current-password" placeholder="Password" value="'+esc(S.aForm.pw)+'" style="width:100%"><div style="display:flex;gap:8px;margin-top:10px"><button class="primary" data-act="signin" style="flex:1;padding:11px 0;font-size:14px">Sign in</button><button data-act="signup" style="flex:1;padding:11px 0;border-radius:14px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-weight:700;font-size:14px">Create account</button></div><div style="font-size:12px;color:'+C.faint+';margin-top:8px">Sign in to sync your log across devices and back it up automatically.</div>'+msg+divider;
 }
-function loginHtml(){
- var msg=S.authMsg?'<div style="font-size:12.5px;color:'+C.sub+';margin-top:14px;text-align:center;min-height:16px">'+esc(S.authMsg)+'</div>':'<div style="min-height:16px;margin-top:14px"></div>';
- var off=!syncEnabled()?'<div style="font-size:12.5px;color:'+C.back+';text-align:center;margin-top:8px;line-height:1.5">Cloud accounts are off \u2014 add your Supabase URL and key in the code to enable sign-in.</div>':'';
- return '<div class="wrap" style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;max-width:400px">'
-  +'<div style="display:flex;flex-direction:column;align-items:center;margin-bottom:26px">'
-   +'<div style="width:62px;height:62px;border-radius:18px;background:'+C.text+';display:grid;place-items:center;box-shadow:0 12px 28px rgba(24,26,32,0.22);margin-bottom:16px"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"><path d="M6.5 6v12M3.2 8.5v7M17.5 6v12M20.8 8.5v7M6.5 12h11"/></svg></div>'
-   +'<div style="font-weight:800;letter-spacing:-.02em;font-size:30px">OVERLOAD</div>'
-   +'<div style="font-size:13px;color:'+C.sub+';margin-top:4px">Sign in to your training log</div>'
-  +'</div>'
-  +'<div class="panel" style="padding:22px">'
-   +'<div class="lbl">Email</div>'
-   +'<input data-field="aEmail" type="email" autocomplete="email" placeholder="you@email.com" value="'+esc(S.aForm.email)+'" style="width:100%;margin-bottom:14px">'
-   +'<div class="lbl">Password</div>'
-   +'<input data-field="aPw" type="password" autocomplete="current-password" placeholder="Your password" value="'+esc(S.aForm.pw)+'" style="width:100%">'
-   +'<button class="primary" data-act="signin" style="margin-top:18px">Sign in</button>'
-   +'<button data-act="signup" style="width:100%;margin-top:10px;padding:13px 0;border-radius:15px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-weight:700;font-size:14px">Create account</button>'
-   +msg+off
-  +'</div>'
-  +'<div style="text-align:center;font-size:11px;color:'+C.faint+';margin-top:18px;line-height:1.6">New here? Tap <b style="color:'+C.sub+'">Create account</b>.<br>Your log syncs to your account and stays private to you.</div>'
- +'</div>';
+function dropdownFor(e){
+ var rows=rowsFor(e.id),rec=recommend(e,rows,S.inc,S.unit),lastLog=rows[rows.length-1],editing=S.editEx===e.id,pal=PAL[rec.v]||GREY,lastLine="";
+ if(lastLog){if(lastLog.carry){lastLine="Last: "+lastLog.weight+S.unit+" \u00D7 "+lastLog.dist+"m \u00D7 "+lastLog.trips+" trips \u00B7 felt "+lastLog.feel+(lastLog.beat?" \u00B7 low recovery":"");}else{var ss=setsOf(lastLog);lastLine="Last: "+ss.map(function(s){return s.w+S.unit+"\u00D7"+s.r;}).join(", ")+" \u00B7 felt "+lastLog.feel+(lastLog.beat?" \u00B7 low recovery":"")+" \u00B7 top est 1RM "+Math.round(setE1(topSet(ss)))+S.unit;}}
+ var H='<div style="padding:6px 8px 14px">';
+ H+='<div style="padding:16px;border-radius:16px;background:'+pal.bg+';color:#181A20;margin-bottom:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:15px;font-weight:700;color:'+pal.ink+'">'+(rec.icon||"\u26A1")+'</span><span style="font-size:11px;font-weight:800;letter-spacing:.12em;color:'+pal.ink+'">'+rec.v+'</span></div><div style="font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1.05">'+esc(rec.head)+'</div>'+(rec.sub?'<div class="mono" style="font-size:12px;color:rgba(24,26,32,0.62);margin-top:4px">'+esc(rec.sub)+'</div>':"")+'<div style="font-size:13px;color:rgba(24,26,32,0.78);line-height:1.5;margin-top:8px">'+esc(rec.detail)+'</div>'+(lastLog?'<div class="mono" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(24,26,32,0.12);font-size:11.5px;color:rgba(24,26,32,0.55)">'+esc(lastLine)+'</div>':"")+'</div>';
+ if(editing){
+  H+='<div style="border:1px solid '+C.text+';border-radius:14px;padding:12px;background:'+C.panel2+'"><input data-field="efName" value="'+esc(S.eForm.name)+'" style="width:100%"><div style="display:flex;gap:10px;margin-top:10px;align-items:flex-end"><div><div class="lbl">Target '+(e.carry?"dist low":"rep low")+'</div><input data-field="efLo" inputmode="numeric" value="'+esc(S.eForm.lo)+'" style="width:64px;text-align:center"></div><div><div class="lbl">Target '+(e.carry?"dist high":"rep high")+'</div><input data-field="efHi" inputmode="numeric" value="'+esc(S.eForm.hi)+'" style="width:64px;text-align:center"></div><button class="chip '+(S.eForm.big?"active":"")+'" data-act="efBig" style="margin-bottom:4px">big lift</button></div><div style="display:flex;gap:8px;margin-top:14px"><button class="primary" data-act="editSave" style="flex:1">Save</button><button data-act="editCancel" style="flex:1;border-radius:14px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.text+';font-weight:700;font-size:14px">Cancel</button></div></div>';
+ }else{
+  if(e.carry){
+   H+='<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap"><div><div class="lbl">Load ('+S.unit+', total)</div><input data-field="cw" inputmode="decimal" placeholder="0" value="'+esc(S.form.cw)+'" style="width:90px;font-size:18px"></div><div><div class="lbl">Distance (m)</div><input data-field="dist" inputmode="numeric" value="'+esc(S.form.dist)+'" style="width:70px;font-size:18px"></div><div><div class="lbl">Trips</div><input data-field="trips" inputmode="numeric" value="'+esc(S.form.trips)+'" style="width:60px;font-size:18px"></div></div>';
+  }else{
+   H+='<div class="lbl">Weight \u00D7 reps per set</div>'+S.form.sets.map(function(s,i){return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:12px;color:'+C.faint+';width:40px">Set '+(i+1)+'</span><input data-field="sw" data-idx="'+i+'" inputmode="decimal" placeholder="'+S.unit+'" value="'+esc(s.w)+'" style="width:78px;font-size:17px;text-align:center"><span style="color:'+C.faint+'">\u00D7</span><input data-field="sr" data-idx="'+i+'" inputmode="numeric" placeholder="reps" value="'+esc(s.r)+'" style="width:66px;font-size:17px;text-align:center">'+(S.form.sets.length>1&&i===S.form.sets.length-1?'<button class="iconBtn" data-act="rmSet"><span style="color:'+C.sub+';font-size:16px">\u2212</span></button>':"")+'</div>';}).join("")+'<button data-act="addSet" style="font-size:13px;color:'+C.faint+';padding:4px 0 12px;display:flex;align-items:center;gap:6px">+ Add set</button>';
+  }
+  H+='<div class="lbl">'+(e.carry?"How did the carry feel?":"How did the hardest set feel?")+'</div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:6px">'+FEELS.map(function(f){return '<button class="feelBtn" data-act="feel" data-val="'+f.k+'" style="background:'+FEELPAL[f.k]+';border:'+(S.feel===f.k?"2px solid "+C.text:"1.5px solid transparent")+'"><div style="font-weight:700;font-size:13.5px;color:'+C.text+'">'+f.label+'</div><div style="font-size:11px;color:rgba(24,26,32,0.55);margin-top:2px">'+f.hint+'</div></button>';}).join("")+'</div>';
+  H+='<button data-act="toggleBeat" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;margin-top:4px;border-radius:9px;border:1px solid '+(S.beat?C.back:C.line)+';background:'+(S.beat?"rgba(210,86,107,0.12)":C.panel2)+';color:'+(S.beat?C.back:C.sub)+';font-size:13px"><span style="width:16px;height:16px;border-radius:4px;border:1px solid '+(S.beat?C.back:C.faint)+';display:grid;place-items:center;color:'+C.back+';font-size:12px">'+(S.beat?"\u2713":"")+'</span>Under-recovered today (bad sleep / still sore)</button>';
+  H+='<button class="primary" data-act="log" style="margin-top:14px;background:'+(S.flash?C.reps:C.weight)+'">'+(S.flash?"Logged \u2713":"Log this session")+'</button>';
+  H+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid '+C.line+'"><button data-act="editDelete" style="width:100%;padding:9px 0;border-radius:11px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.back+';font-size:13px;font-weight:700">Delete exercise</button></div>';
+  H+='<button data-act="toggleHist" style="width:100%;margin-top:8px;padding:9px 0;border-radius:11px;color:'+C.sub+';font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px">Progress <span style="display:inline-block;transform:'+(S.histOpen?"rotate(180deg)":"none")+'">\u2304</span></button>';
+  if(S.histOpen){
+   var chartData=rows.map(function(l){return {d:new Date(l.t).toLocaleDateString(undefined,{month:"numeric",day:"numeric"}),val:e.carry?l.weight:Math.round(setE1(topSet(setsOf(l))))};});
+   H+=miniChart(chartData,C.text)+'<div style="font-size:12px;font-weight:700;color:'+C.sub+';margin:8px 0 6px">Session log</div>';
+   if(!rows.length)H+='<div style="font-size:13px;color:'+C.faint+'">No sessions yet.</div>';
+   H+=rows.slice().reverse().map(function(l){var disp=l.carry?(l.weight+S.unit+" \u00D7 "+l.dist+"m \u00D7 "+l.trips):setsOf(l).map(function(s){return s.w+S.unit+"\u00D7"+s.r;}).join(", ");return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid '+C.line+'"><div class="mono" style="font-size:13px;color:'+C.text+'">'+esc(disp)+'</div><div style="display:flex;align-items:center;gap:10px"><span style="font-size:11px;color:'+feelColor(l.feel)+';text-transform:uppercase;letter-spacing:.08em">'+l.feel+'</span><span style="font-size:11px;color:'+C.faint+'">'+new Date(l.t).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</span><button class="iconBtn" style="padding:4px" data-act="del" data-val="'+l.id+'"><span style="color:'+C.faint+';font-size:13px">\u2212</span></button></div></div>';}).join("");
+  }
+ }
+ H+='</div>';
+ return H;
 }
 function render(){
- if(!S.auth){root.innerHTML=loginHtml();return;}
- var ex=curEx(),all=exercises(),dayEx=all.filter(function(e){return e.day===S.day;});
- var rows=rowsFor(ex&&ex.id),rec=ex?recommend(ex,rows,S.inc,S.unit):null,lastLog=rows[rows.length-1];
- var chartData=rows.map(function(l){return {d:new Date(l.t).toLocaleDateString(undefined,{month:"numeric",day:"numeric"}),val:(ex&&ex.carry)?l.weight:Math.round(setE1(topSet(setsOf(l))))};});
-
+ var all=exercises(),dayEx=all.filter(function(e){return e.day===S.day;});
  var H='<div class="wrap">';
  H+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:11px;background:'+C.text+';display:grid;place-items:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"><path d="M6.5 6v12M3.2 8.5v7M17.5 6v12M20.8 8.5v7M6.5 12h11"/></svg></div><div><div style="font-weight:800;letter-spacing:-.02em;font-size:24px">OVERLOAD</div></div></div><button class="iconBtn" data-act="toggleSet"><span style="font-size:18px;color:'+C.sub+'">\u2699</span></button></div>';
-
  if(S.showSet){
   H+='<div class="panel" style="padding:14px;margin-bottom:14px">'+accountHtml()+'<div class="row"><span style="font-size:13px;color:'+C.sub+'">Units</span><div style="display:flex;gap:6px">'+["lb","kg"].map(function(u){return '<button class="chip '+(S.unit===u?"active":"")+'" data-act="unit" data-val="'+u+'">'+u+'</button>';}).join("")+'</div></div><div class="row"><span style="font-size:13px;color:'+C.sub+'">Smallest plate jump</span><div style="display:flex;gap:6px">'+(S.unit==="kg"?[1.25,2.5,5]:[2.5,5,10]).map(function(n){return '<button class="chip '+(S.inc===n?"active":"")+'" data-act="inc" data-val="'+n+'">'+n+'</button>';}).join("")+'</div></div><div style="font-size:12px;color:'+C.faint+';margin-top:4px">Weight jumps round to this. Big lifts jump double.</div><div style="border-top:1px solid '+C.line+';margin:12px 0 10px"></div><div class="lbl">Days \u00B7 tap a name to rename</div>'+S.days.map(function(d,i){return '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center"><input data-field="dayName" data-idx="'+i+'" value="'+esc(d)+'" style="flex:1">'+(S.days.length>1?'<button class="iconBtn" data-act="rmDay" data-val="'+i+'"><span style="color:'+C.faint+';font-size:14px">\u2212</span></button>':"")+'</div>';}).join("")+'<button data-act="addDay" style="font-size:13px;color:'+C.faint+';padding:4px 0;display:flex;align-items:center;gap:6px">+ Add day</button><div style="font-size:12px;color:'+C.faint+';margin-top:6px">Renaming updates that day\u0027s exercises. Removing a day deletes its exercises.</div><div style="border-top:1px solid '+C.line+';margin:12px 0 10px"></div><div class="lbl">Backup \u00B7 '+S.logs.length+' sessions</div><div style="display:flex;gap:8px"><button data-act="export" style="flex:1;padding:9px 0;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Export backup</button><button data-act="import" style="flex:1;padding:9px 0;border-radius:9px;border:1px solid '+C.line+';background:'+C.panel2+';color:'+C.text+';font-size:13px;font-weight:700">Import backup</button></div><div style="font-size:12px;color:'+C.faint+';margin-top:8px">Export saves your full log as a file. Import merges a backup back in \u2014 nothing gets overwritten.</div></div>';
  }
-
  H+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px;margin-bottom:12px">'+S.days.map(function(d){return '<button class="dayBtn '+(S.day===d?"active":"")+'" data-act="pickDay" data-val="'+esc(d)+'">'+esc(d)+'</button>';}).join("")+'</div>';
-
- H+='<div class="panel" style="padding:6px;margin-bottom:14px">'+dayEx.map(function(e){return '<button class="exBtn '+(e.id===S.exId?"active":"")+'" data-act="selEx" data-val="'+e.id+'"><span>'+esc(e.name)+'</span><span class="exMeta">'+(e.carry?e.lo+"-"+e.hi+"m":e.lo+"-"+e.hi)+'</span></button>';}).join("");
+ H+='<div class="panel" style="padding:6px;margin-bottom:14px">'+dayEx.map(function(e){var open=(e.id===S.exId);return '<div class="exWrap" data-ex-id="'+e.id+'" style="position:relative;overflow:hidden;border-radius:14px;margin-bottom:2px"><div style="position:absolute;inset:0;display:flex;align-items:center;gap:8px;padding-left:18px;background:'+PINK.bg+';color:'+C.back+';font-size:13px;font-weight:800;letter-spacing:.02em">\u2715 Delete</div><div class="exSlide" style="position:relative;background:'+C.panel+'"><div class="exBtn '+(open?"active":"")+'" style="margin-bottom:0"><button data-act="selEx" data-val="'+e.id+'" style="flex:1;text-align:left;background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer">'+esc(e.name)+'</button><span class="exMeta" style="display:flex;align-items:center;gap:12px">'+(e.carry?e.lo+"-"+e.hi+"m":e.lo+"-"+e.hi)+'<button data-act="editName" data-val="'+e.id+'" title="Edit name and reps" style="background:none;border:none;padding:0;color:'+C.faint+';font-size:14px;cursor:pointer">\u270E</button><button data-act="selEx" data-val="'+e.id+'" style="background:none;border:none;padding:0;color:inherit;font-size:13px;cursor:pointer">'+(open?"\u2303":"\u2304")+'</button></span></div></div></div>'+(open?dropdownFor(e):"");}).join("");
  H+='<button data-act="toggleAdd" style="width:100%;padding:9px 12px;border-radius:9px;color:'+C.faint+';font-size:13px;display:flex;align-items:center;gap:6px">+ Add exercise to '+S.day+'</button>';
  if(S.showAdd){H+='<div style="padding:10px;border-top:1px solid '+C.line+';margin-top:4px"><input data-field="cname" placeholder="Exercise name" value="'+esc(S.cForm.name)+'" style="width:100%"><div style="display:flex;gap:8px;margin-top:8px;align-items:center"><input data-field="clo" inputmode="numeric" value="'+esc(S.cForm.lo)+'" style="width:56px"><span style="color:'+C.faint+'">to</span><input data-field="chi" inputmode="numeric" value="'+esc(S.cForm.hi)+'" style="width:56px"><span style="color:'+C.sub+';font-size:13px">target reps</span><button class="chip '+(S.cForm.big?"active":"")+'" data-act="cBig">big lift</button></div><button class="primary" data-act="addCustom" style="margin-top:10px">Add</button></div>';}
  H+='</div>';
-
- if(rec){
-  var lastLine="";
-  if(lastLog){if(lastLog.carry){lastLine="Last: "+lastLog.weight+S.unit+" \u00D7 "+lastLog.dist+"m \u00D7 "+lastLog.trips+" trips \u00B7 felt "+lastLog.feel+(lastLog.beat?" \u00B7 low recovery":"");}else{var ss=setsOf(lastLog);lastLine="Last: "+ss.map(function(s){return s.w+S.unit+"\u00D7"+s.r;}).join(", ")+" \u00B7 felt "+lastLog.feel+(lastLog.beat?" \u00B7 low recovery":"")+" \u00B7 top est 1RM "+Math.round(setE1(topSet(ss)))+S.unit;}}
-  var pal=PAL[rec.v]||GREY;
-  H+='<div style="padding:20px;margin-bottom:14px;border-radius:22px;background:'+pal.bg+';box-shadow:0 8px 22px rgba(24,26,32,0.06);color:#181A20"><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:16px;font-weight:700;color:'+pal.ink+'">'+(rec.icon||"\u26A1")+'</span><span style="font-size:12px;font-weight:800;letter-spacing:.12em;color:'+pal.ink+'">'+rec.v+'</span></div><div style="font-size:36px;font-weight:800;letter-spacing:-.03em;line-height:1.05;color:#181A20">'+esc(rec.head)+'</div>'+(rec.sub?'<div class="mono" style="font-size:13px;color:rgba(24,26,32,0.62);margin-top:5px">'+esc(rec.sub)+'</div>':"")+'<div style="font-size:13.5px;color:rgba(24,26,32,0.78);line-height:1.5;margin-top:10px">'+esc(rec.detail)+'</div>'+(lastLog?'<div class="mono" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(24,26,32,0.12);font-size:12px;color:rgba(24,26,32,0.55)">'+esc(lastLine)+'</div>':"")+'</div>';
- }
-
- H+='<div style="display:flex;gap:6px;margin-bottom:12px">'+[["plan","Log set"],["history","Progress"]].map(function(t){return '<button class="tabBtn '+(S.tab===t[0]?"active":"")+'" data-act="tab" data-val="'+t[0]+'">'+t[1]+'</button>';}).join("")+'</div>';
-
- if(S.tab==="plan"&&!ex){H+='<div class="panel" style="padding:20px;text-align:center;color:'+C.faint+';font-size:13px">No exercises in this day yet \u2014 use \u201cAdd exercise to '+esc(S.day)+'\u201d above to build it.</div>';}
- if(S.tab==="plan"&&ex){
-  var editing=S.editEx===ex.id;
-  H+='<div class="panel" style="padding:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:13px;font-weight:700;color:'+C.sub+'">'+esc(ex?ex.name:"")+' <span style="color:'+C.faint+';font-weight:400">\u00B7 target '+(ex&&ex.carry?ex.lo+"-"+ex.hi+"m":ex?ex.lo+"-"+ex.hi+" reps":"")+'</span></div><button class="chip" data-act="'+(editing?"editCancel":"editOpen")+'">'+(editing?"Cancel":"Edit")+'</button></div>';
-
-  if(editing){
-   H+='<div style="border:1px solid '+C.weight+';border-radius:10px;padding:12px;background:'+C.panel2+'"><input data-field="efName" value="'+esc(S.eForm.name)+'" style="width:100%"><div style="display:flex;gap:10px;margin-top:10px;align-items:flex-end"><div><div class="lbl">Target '+(ex&&ex.carry?"dist low":"rep low")+'</div><input data-field="efLo" inputmode="numeric" value="'+esc(S.eForm.lo)+'" style="width:64px;text-align:center"></div><div><div class="lbl">Target '+(ex&&ex.carry?"dist high":"rep high")+'</div><input data-field="efHi" inputmode="numeric" value="'+esc(S.eForm.hi)+'" style="width:64px;text-align:center"></div><button class="chip '+(S.eForm.big?"active":"")+'" data-act="efBig" style="margin-bottom:4px">big lift</button></div><div style="display:flex;gap:8px;margin-top:14px"><button class="primary" data-act="editSave" style="flex:1">Save</button></div><button data-act="editDelete" style="width:100%;margin-top:8px;color:'+C.back+';font-size:13px;padding:8px;font-weight:700">Remove from split</button></div>';
-  }else{
-   if(ex&&ex.carry){
-    H+='<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap"><div><div class="lbl">Load ('+S.unit+', total)</div><input data-field="cw" inputmode="decimal" placeholder="0" value="'+esc(S.form.cw)+'" style="width:90px;font-size:18px"></div><div><div class="lbl">Distance (m)</div><input data-field="dist" inputmode="numeric" value="'+esc(S.form.dist)+'" style="width:70px;font-size:18px"></div><div><div class="lbl">Trips</div><input data-field="trips" inputmode="numeric" value="'+esc(S.form.trips)+'" style="width:60px;font-size:18px"></div></div>';
-   }else{
-    H+='<div class="lbl">Weight \u00D7 reps per set</div>'+S.form.sets.map(function(s,i){return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:12px;color:'+C.faint+';width:40px">Set '+(i+1)+'</span><input data-field="sw" data-idx="'+i+'" inputmode="decimal" placeholder="'+S.unit+'" value="'+esc(s.w)+'" style="width:78px;font-size:17px;text-align:center"><span style="color:'+C.faint+'">\u00D7</span><input data-field="sr" data-idx="'+i+'" inputmode="numeric" placeholder="reps" value="'+esc(s.r)+'" style="width:66px;font-size:17px;text-align:center">'+(S.form.sets.length>1&&i===S.form.sets.length-1?'<button class="iconBtn" data-act="rmSet"><span style="color:'+C.sub+';font-size:16px">\u2212</span></button>':"")+'</div>';}).join("")+'<button data-act="addSet" style="font-size:13px;color:'+C.faint+';padding:4px 0 12px;display:flex;align-items:center;gap:6px">+ Add set</button>';
-   }
-   H+='<div class="lbl">'+((ex&&ex.carry)?"How did the carry feel?":"How did the hardest set feel?")+'</div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:6px">'+FEELS.map(function(f){return '<button class="feelBtn" data-act="feel" data-val="'+f.k+'" style="background:'+FEELPAL[f.k]+';border:'+(S.feel===f.k?"2px solid "+C.text:"1.5px solid transparent")+'"><div style="font-weight:700;font-size:13.5px;color:'+C.text+'">'+f.label+'</div><div style="font-size:11px;color:rgba(24,26,32,0.55);margin-top:2px">'+f.hint+'</div></button>';}).join("")+'</div>';
-   H+='<button data-act="toggleBeat" style="display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;margin-top:4px;border-radius:9px;border:1px solid '+(S.beat?C.back:C.line)+';background:'+(S.beat?"rgba(210,86,107,0.12)":C.panel2)+';color:'+(S.beat?C.back:C.sub)+';font-size:13px"><span style="width:16px;height:16px;border-radius:4px;border:1px solid '+(S.beat?C.back:C.faint)+';display:grid;place-items:center;color:'+C.back+';font-size:12px">'+(S.beat?"\u2713":"")+'</span>Under-recovered today (bad sleep / still sore)</button>';
-   H+='<button class="primary" data-act="log" style="margin-top:14px;background:'+(S.flash?C.reps:C.weight)+'">'+(S.flash?"Logged \u2713":"Log this session")+'</button>';
-  }
-  H+='</div>';
- }
-
- if(S.tab==="history"){
-  H+='<div class="panel" style="padding:16px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:12px"><span style="color:'+C.weight+';font-size:15px">\u2197</span><span style="font-size:13px;font-weight:700">'+((ex&&ex.carry)?"Load trend":"Top-set 1RM trend")+' -- '+esc(ex?ex.name:"")+'</span></div>'+miniChart(chartData,C.text);
-  H+='<div style="font-size:12px;font-weight:700;color:'+C.sub+';margin:10px 0 8px">Session log</div>';
-  if(!rows.length)H+='<div style="font-size:13px;color:'+C.faint+'">No sessions yet.</div>';
-  H+=rows.slice().reverse().map(function(l){var disp=l.carry?(l.weight+S.unit+" \u00D7 "+l.dist+"m \u00D7 "+l.trips):setsOf(l).map(function(s){return s.w+S.unit+"\u00D7"+s.r;}).join(", ");return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid '+C.line+'"><div class="mono" style="font-size:13px;color:'+C.text+'">'+esc(disp)+'</div><div style="display:flex;align-items:center;gap:10px"><span style="font-size:11px;color:'+feelColor(l.feel)+';text-transform:uppercase;letter-spacing:.08em">'+l.feel+'</span><span style="font-size:11px;color:'+C.faint+'">'+new Date(l.t).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</span><button class="iconBtn" style="padding:4px" data-act="del" data-val="'+l.id+'"><span style="color:'+C.faint+';font-size:13px">\u2212</span></button></div></div>';}).join("");
-  H+='</div>';
- }
 
  H+='<button data-act="toggleHow" style="width:100%;margin-top:14px;padding:12px 14px;border-radius:12px;border:1px solid '+C.line+';background:'+C.panel+';color:'+C.sub+';font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center">How the recommendations work <span style="font-size:16px;display:inline-block;transform:'+(S.showHow?"rotate(180deg)":"none")+'">\u2304</span></button>';
  if(S.showHow){
@@ -261,13 +221,15 @@ function setFirstExForDay(){var f=exercises().filter(function(e){return e.day===
 function renameDay(idx,name){name=(name||"").trim();var old=S.days[idx];if(!name||name===old)return;if(S.days.indexOf(name)>=0){render();return;}DEFAULTS.forEach(function(e){var eff=(S.overrides[e.id]&&S.overrides[e.id].day)||e.day;if(eff===old)S.overrides[e.id]=Object.assign({},S.overrides[e.id],{day:name});});S.custom.forEach(function(c){if(((S.overrides[c.id]&&S.overrides[c.id].day)||c.day)===old)S.overrides[c.id]=Object.assign({},S.overrides[c.id],{day:name});});S.days[idx]=name;if(S.day===old)S.day=name;persist();render();}
 
 function onClick(e){
+ if(swiped){swiped=false;return;}
  var el=e.target.closest("[data-act]");if(!el)return;
  var act=el.getAttribute("data-act"),val=el.getAttribute("data-val"),ex=curEx();
  if(act==="toggleSet")S.showSet=!S.showSet;
  else if(act==="toggleAdd")S.showAdd=!S.showAdd;
  else if(act==="toggleHow")S.showHow=!S.showHow;
- else if(act==="pickDay"){S.day=val;setFirstExForDay();S.showSet=false;S.editEx=null;}
- else if(act==="selEx"){S.exId=val;S.editEx=null;}
+ else if(act==="pickDay"){S.day=val;S.exId=null;S.showSet=false;S.editEx=null;S.histOpen=false;}
+ else if(act==="selEx"){if(S.exId===val){S.exId=null;}else{S.exId=val;S.editEx=null;S.histOpen=false;if(S.formEx!==val){S.form.sets=[{w:"",r:""},{w:"",r:""}];S.form.cw="";S.formEx=val;}}}
+ else if(act==="toggleHist")S.histOpen=!S.histOpen;
  else if(act==="tab")S.tab=val;
  else if(act==="feel")S.feel=val;
  else if(act==="toggleBeat")S.beat=!S.beat;
@@ -276,18 +238,19 @@ function onClick(e){
  else if(act==="unit"){S.unit=val;S.inc=val==="kg"?2.5:5;persist();}
  else if(act==="inc"){S.inc=parseFloat(val);persist();}
  else if(act==="cBig")S.cForm.big=!S.cForm.big;
- else if(act==="addCustom"){if(!S.cForm.name.trim())return;var id="c"+uid().slice(0,6);S.custom.push({id:id,day:S.day,name:S.cForm.name.trim(),lo:parseInt(S.cForm.lo)||8,hi:parseInt(S.cForm.hi)||12,big:S.cForm.big});S.cForm={name:"",lo:"8",hi:"12",big:false};S.showAdd=false;S.exId=id;persist();}
+ else if(act==="addCustom"){if(!S.cForm.name.trim())return;var id="c"+uid().slice(0,6);S.custom.push({id:id,day:S.day,name:S.cForm.name.trim(),lo:parseInt(S.cForm.lo)||8,hi:parseInt(S.cForm.hi)||12,big:S.cForm.big});S.cForm={name:"",lo:"8",hi:"12",big:false};S.showAdd=false;S.exId=id;S.formEx=id;S.histOpen=false;S.form.sets=[{w:"",r:""},{w:"",r:""}];S.form.cw="";persist();}
+ else if(act==="editName"){var ne=exercises().filter(function(x){return x.id===val;})[0];if(ne){S.exId=val;S.editEx=val;S.histOpen=false;S.eForm={name:ne.name,lo:String(ne.lo),hi:String(ne.hi),big:!!ne.big};}}
  else if(act==="editOpen"){S.editEx=ex.id;S.eForm={name:ex.name,lo:String(ex.lo),hi:String(ex.hi),big:!!ex.big};}
  else if(act==="editCancel")S.editEx=null;
  else if(act==="efBig")S.eForm.big=!S.eForm.big;
  else if(act==="editSave"){var lo=parseInt(S.eForm.lo)||ex.lo,hi=parseInt(S.eForm.hi)||ex.hi;if(hi<lo){var tmp=lo;lo=hi;hi=tmp;}S.overrides[ex.id]=Object.assign({},S.overrides[ex.id],{name:(S.eForm.name.trim()||ex.name),lo:lo,hi:hi,big:S.eForm.big});S.editEx=null;persist();}
- else if(act==="editDelete"){S.overrides[ex.id]=Object.assign({},S.overrides[ex.id],{deleted:true});S.editEx=null;setFirstExForDay();persist();}
+ else if(act==="editDelete"){var de=curEx();if(de&&confirm("Delete \u0027"+de.name+"\u0027 from this day?")){S.overrides[de.id]=Object.assign({},S.overrides[de.id],{deleted:true});S.editEx=null;S.exId=null;persist();}}
  else if(act==="addDay"){var base="New Day",nm=base,k=2;while(S.days.indexOf(nm)>=0){nm=base+" "+k;k++;}S.days.push(nm);S.day=nm;S.exId=null;S.showAdd=false;persist();}
- else if(act==="rmDay"){var di=parseInt(val,10),dn=S.days[di];if(S.days.length<=1)return;if(!confirm("Remove '"+dn+"' and its exercises?"))return;exercises().forEach(function(e){if(e.day===dn)S.overrides[e.id]=Object.assign({},S.overrides[e.id],{deleted:true});});S.days.splice(di,1);if(S.day===dn){S.day=S.days[0];setFirstExForDay();}persist();}
+ else if(act==="rmDay"){var di=parseInt(val,10),dn=S.days[di];if(S.days.length<=1)return;if(!confirm("Remove '"+dn+"' and its exercises?"))return;exercises().forEach(function(e){if(e.day===dn)S.overrides[e.id]=Object.assign({},S.overrides[e.id],{deleted:true});});S.days.splice(di,1);if(S.day===dn){S.day=S.days[0];S.exId=null;}persist();}
  else if(act==="del"){S.logs=S.logs.filter(function(x){return x.id!==val;});persist();}
  else if(act==="signin"){doAuth("signin");return;}
  else if(act==="signup"){doAuth("signup");return;}
- else if(act==="signout"){S.auth=null;saveAuth(null);applyData({});S.aForm={email:"",pw:""};S.showSet=false;S.authMsg="";render();return;}
+ else if(act==="signout"){S.auth=null;saveAuth(null);S.authMsg="Signed out.";render();return;}
  else if(act==="syncnow"){if(S.auth){S.authMsg="Syncing\u2026";render();pullMerge().then(function(){if(S.auth&&S.authMsg.indexOf("error")<0)S.authMsg="Synced \u2713";render();});}return;}
  else if(act==="export"){doExport();return;}
  else if(act==="import"){fileInput.click();return;}
@@ -320,15 +283,21 @@ function onInput(e){var el=e.target,f=el.getAttribute("data-field");if(!f)return
 }
 function onChange(e){var el=e.target;if(el.getAttribute&&el.getAttribute("data-field")==="dayName"){renameDay(parseInt(el.getAttribute("data-idx"),10),el.value);}}
 var root=document.getElementById("root");
-if(S.auth){loadAccountData();persist();}
 if(S.days.indexOf(S.day)<0)S.day=S.days[0]||"";
-setFirstExForDay();
+S.exId=null;
 root.addEventListener("click",onClick);
 root.addEventListener("input",onInput);
 root.addEventListener("change",onChange);
+var SW={el:null,id:null,x0:0,y0:0,dir:0,dx:0},swiped=false;
+function onTouchStart(e){swiped=false;var s=e.target.closest?e.target.closest(".exSlide"):null;if(!s)return;SW.el=s;SW.id=s.parentNode.getAttribute("data-ex-id");var t=e.touches[0];SW.x0=t.clientX;SW.y0=t.clientY;SW.dir=0;SW.dx=0;s.style.transition="none";}
+function onTouchMove(e){if(!SW.el)return;var t=e.touches[0],dx=t.clientX-SW.x0,dy=t.clientY-SW.y0;if(SW.dir===0){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;SW.dir=Math.abs(dx)>Math.abs(dy)?1:2;}if(SW.dir!==1)return;e.preventDefault();if(dx<0)dx=0;if(dx>132)dx=132;SW.dx=dx;SW.el.style.transform="translateX("+dx+"px)";}
+function onTouchEnd(){if(!SW.el)return;var s=SW.el,id=SW.id,dx=SW.dx,horiz=SW.dir===1;SW.el=null;s.style.transition="transform .18s ease";if(horiz&&dx>6)swiped=true;if(horiz&&dx>=84){s.style.transform="translateX(110%)";setTimeout(function(){doDeleteEx(id);},150);}else{s.style.transform="translateX(0)";}}
+function doDeleteEx(id){var de=exercises().filter(function(x){return x.id===id;})[0];if(!de){render();return;}if(confirm("Delete \u0027"+de.name+"\u0027 from this day?")){S.overrides[de.id]=Object.assign({},S.overrides[de.id],{deleted:true});if(S.exId===id)S.exId=null;if(S.editEx===id)S.editEx=null;persist();}render();}
+root.addEventListener("touchstart",onTouchStart,{passive:true});
+root.addEventListener("touchmove",onTouchMove,{passive:false});
+root.addEventListener("touchend",onTouchEnd);
 render();
 if(S.auth&&syncEnabled()){pullMerge();}
 </script>
 </body>
 </html>
-
